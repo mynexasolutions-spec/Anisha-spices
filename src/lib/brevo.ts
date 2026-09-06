@@ -363,6 +363,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const paymentBadgeBg = isPaidOnline ? '#EAF5EA' : '#FFF5EB'
   const paymentBadgeColor = isPaidOnline ? '#166534' : '#9A3412'
   const paymentBadgeBorder = isPaidOnline ? '#BBF7D0' : '#FED7AA'
+  const rawSender = process.env.BREVO_SENDER_EMAIL?.trim() || ''
+  const angleMatch = rawSender.match(/<([^>]+)>/)
+  const supportEmail = angleMatch ? angleMatch[1] : (rawSender || 'info@meagle360.com')
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -506,7 +509,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
                 Anisha Masale · Handcrafted Indian Spices
               </div>
               <div style="font-size: 11px; color: #8C7567; margin-top: 4px;">
-                Questions about your order? Reach us at <a href="mailto:info@meagle360.com" style="color: #7B111A; text-decoration: underline;">info@meagle360.com</a>
+                Questions about your order? Reach us at <a href="mailto:${supportEmail}" style="color: #7B111A; text-decoration: underline;">${supportEmail}</a>
               </div>
               <div style="font-size: 10px; color: #A68B7C; margin-top: 8px;">
                 © ${new Date().getFullYear()} Anisha Masale. All rights reserved.
