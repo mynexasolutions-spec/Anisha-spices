@@ -1,20 +1,20 @@
-# 🌿 Anisha Spices 
+# 🌿 Anisha Spices
 
 > **Pure Spice. Real Taste. Trusted Every Time.**  
-> A full-stack, production-ready D2C e-commerce platform built with Next.js (App Router), Supabase (PostgreSQL + Auth + RLS), and Tailwind CSS.
+> A full-stack, production-ready D2C e-commerce platform built with Next.js (App Router), Supabase (PostgreSQL + Auth + RLS), Brevo (Transactional Email & Auth OTPs), and Razorpay.
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-- **Node.js** v18+ (tested on Node v22)
+- **Node.js** v18+ (tested on Node v20/v22)
 - **npm** or **pnpm** / **yarn**
 
 ### 2. Installation & Run
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/mynexasolutions-spec/Anisha-spices.git
 cd Anisha-spices
 
 # Install dependencies
@@ -29,21 +29,30 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ## 🔑 Environment Variables (`.env.local`)
 
+Create a `.env.local` file in the root directory:
+
 ```env
-# Supabase (
+# ─── Supabase Database & Auth ─────────────────────────────
 NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
 SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
-# Admin Credentials
+# ─── Admin Seed Credentials ───────────────────────────────
 ADMIN_EMAIL="admin@anishamasala.com"
-ADMIN_PASSWORD="admin@123"
+ADMIN_PASSWORD="your-secure-admin-password"
 
-# Razorpay (Optional for Online Payments) (currently not using [as of september 1st week])
-RAZORPAY_KEY_ID="rzp_test_..."
-RAZORPAY_KEY_SECRET="your-razorpay-secret"
+# ─── Brevo (Transactional Emails & Auth OTPs) ──────────────
+BREVO_API_KEY="xkeysib-..."
+BREVO_SENDER_EMAIL="noreply@yourdomain.com"
+BREVO_SENDER_NAME="Anisha Masale"
 
-# Cloudinary (Product Image Uploads)
+# ─── Razorpay Payment Gateway ─────────────────────────────
+NEXT_PUBLIC_RAZORPAY_KEY_ID="rzp_live_..."
+RAZORPAY_KEY_ID="rzp_live_..."
+RAZORPAY_KEY_SECRET="your-razorpay-key-secret"
+RAZORPAY_WEBHOOK_SECRET="your-razorpay-webhook-secret"
+
+# ─── Cloudinary (Product Media Uploads) ───────────────────
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME="your-cloud-name"
 CLOUDINARY_API_KEY="your-api-key"
 CLOUDINARY_API_SECRET="your-api-secret"
@@ -51,94 +60,85 @@ CLOUDINARY_API_SECRET="your-api-secret"
 
 ---
 
-## 🔐 Credentials for Testing
+## 🔐 Credentials & Access URLs
 
-| Role | Email | Password | Access URL |
-|---|---|---|---|
-| **Store Admin** | `admin@anishamasala.com` | `admin@123` | [`/admin`](http://localhost:3000/admin) |
-| **Demo Customer** | `demo@anishamasala.com` | `DemoUser@123` | [`/login`](http://localhost:3000/login) |
+| Portal | URL | Description |
+|---|---|---|
+| **Storefront** | [`/`](http://localhost:3000/) | Customer marketplace & catalog |
+| **Store Admin Dashboard** | [`/admin`](http://localhost:3000/admin) | Management suite (Orders, Inventory, Customers) |
+| **Admin Login** | [`/admin/login`](http://localhost:3000/admin/login) | Secured admin authentication |
+| **Customer Auth** | [`/login`](http://localhost:3000/login) | Customer Sign In, Sign Up (OTP), and Password Reset |
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features & Architecture
+
+### 🛡️ Authentication Lifecycle (Brevo + Supabase)
+- **Sign Up via 6-Digit Email OTP**: Verified registration via Brevo email OTP (10-minute expiry with attempt counters).
+- **Zero-Quota Email/Password Login**: Returning customers log in instantly with email & password without consuming email quota.
+- **Forgot Password Workflow**: Secure 64-character tokenized single-use reset links sent via Brevo (15-minute expiry).
+- **Cart Session Merging**: Automatic synchronization of guest cart items into customer account upon login.
+
+### 💳 Payment & Webhooks Infrastructure
+- **Dual Payment Options**: Cash on Delivery (COD) and Online Payments via Razorpay.
+- **Razorpay Webhook API (`/api/webhooks/razorpay`)**:
+  - Background event listener for `order.paid` and `payment.captured`.
+  - **HMAC-SHA256 Signature Verification** with timing-safe comparison to block unauthorized requests.
+  - **Idempotency Guard**: Guarantees zero duplicate database updates and prevents duplicate invoice emails.
+  - Automatic order status updates to `paid` and `processing`.
+- **Royal Invoice Emails**: Beautiful branded email receipts delivered via Brevo upon order confirmation (with itemized pricing, discounts, shipping fees, and address breakdown).
 
 ### 🛍️ Storefront (Customer Experience)
-- **Dynamic Catalog**: 13+ pure spices with multiple pack sizes (50g, 100g, 250g, 500g, 1kg).
-- **Hybrid Cart**: Guest cart (cookies) + Logged-in cart (Supabase `cart_items`) with automatic merge on login.
-- **Dynamic Free Delivery Bar**: Live progress bar calculating amount needed for free delivery.
-- **1-Click Checkout**: Supports guest checkout + saved addresses with COD by default and Razorpay integration.
-- **Live Order Tracking**: Customer account dashboard (`/account/orders`) with status stepper (*Placed ➔ Packed ➔ Shipped ➔ Delivered*).
-- **Address Book**: Manage multiple delivery addresses with default selection (`/account/addresses`).
+- **Dynamic Spice Catalog**: Handcrafted Indian spices with multiple variant pack sizes (50g, 100g, 250g, 500g, 1kg).
+- **Hybrid Cart Engine**: Guest cart (HTTP cookies) + Authenticated cart (`cart_items` in Supabase).
+- **Live Free Shipping Threshold Bar**: Real-time progress tracker towards free shipping.
+- **Pincode Lookup**: Automatic city/state detection via Indian Postal PIN code API.
+- **Customer Account Dashboard (`/account/orders`)**: Real-time status tracker (*Placed ➔ Processing ➔ Shipped ➔ Delivered*).
+- **Address Book (`/account/addresses`)**: Saved address manager with default address selection.
 
-### 🛡️ Admin Dashboard (`/admin`)
-- **Mobile Responsive Drawer**: Hamburger menu with slide-out navigation on phones and tablets.
-- **Real-Time Overview**: Live revenue, orders counter, customer count, and product metrics.
-- **Product & Variant Manager**: Add/edit products, manage multiple pack weights, prices, and stock.
-- **Category Management**: Create and manage categories with auto-slug generation.
-- **Order Processing**: View customer details, shipping address, update order status, and track payments.
-- **Customer Directory**: Active/suspended toggles and order counts.
-- **Delivery Settings (`/admin/settings/shipping`)**: Dynamic control over free shipping threshold and standard delivery fees.
-- **Marketing & Content**: Top announcement ticker, hero slider, and global FAQ management.
+### 👑 Admin Management Suite (`/admin`)
+- **Dashboard Overview**: Revenue metrics, order counter, customer volume, and sales graphs.
+- **Product & Inventory Manager**: Full control over products, pack weights, SKU stock, and images.
+- **Order Processing Suite**: View customer contact, order history, shipping snapshots, and fulfill orders.
+- **Shipping Settings (`/admin/settings/shipping`)**: Dynamic control over free delivery threshold and standard delivery fees.
+- **Storefront Content Management**: Live controls for hero banners, announcement bars, and product FAQs.
 
 ---
 
-## 🗄️ Database Architecture & Setup (Supabase PostgreSQL)
+## 🗄️ Database Architecture (Supabase PostgreSQL)
 
-### 1. Database Schema & Migration
-The complete database schema with Row Level Security (RLS) policies and triggers is located in:
-👉 [`supabase/migrations/00001_initial_schema.sql`](supabase/migrations/00001_initial_schema.sql)
+### Database Migrations
+Migrations are managed in `supabase/migrations/`:
+- `00001_initial_schema.sql`: Primary schema for products, variants, categories, orders, order items, and profiles.
+- `20260625000000_add_shipping_address_snapshot.sql`: Permanent JSONB shipping address snapshot on orders.
+- `20260701000000_brevo_auth_tables.sql`: Dedicated auth tables `auth_signup_otps` and `password_reset_tokens` with RLS protection.
 
-To apply the schema to your Supabase project:
-1. Open your **Supabase Dashboard** ➔ Go to **SQL Editor**.
-2. Paste the contents of `00001_initial_schema.sql` and click **Run**.
+### Core Tables
 
-### 2. Core Tables Overview
-
-| Table | Purpose | Key Relationships |
+| Table | Purpose | Security & RLS |
 |---|---|---|
-| `profiles` | Users & Admin directory with RBAC | `auth.users(id)` |
-| `categories` | Spice categories & internal system config | Self-contained, slug indexed |
-| `products` | Base product information | `category_id ➔ categories(id)` |
-| `product_variants` | Pack weights (50g, 100g, 250g, 500g, 1kg), prices & stock | `product_id ➔ products(id)` |
-| `orders` | Customer orders, shipping snapshot & COD/Razorpay status | `user_id ➔ profiles(id)` |
-| `order_items` | Purchased items snapshot with purchase price | `order_id ➔ orders(id)` |
-| `addresses` | Customer saved shipping addresses | `user_id ➔ profiles(id)` |
-| `cart_items` | Authenticated user shopping cart items | `user_id ➔ profiles(id)` |
-| `inquiries` | Contact form submissions & newsletter subscribers | Standalone submissions |
-| `hero_slides` | Homepage hero banners & CTA configuration | Standalone banner config |
-| `announcements` | Top announcement bar ticker messages | Standalone banner config |
-| `global_faqs` | Universal store FAQs shown on product pages | Standalone Q&A config |
+| `profiles` | User directory with RBAC (`customer` / `admin`) | RLS: Users read/write own profile, Admins full access |
+| `categories` | Product categories & slugs | Public read, Admin write |
+| `products` | Base product data & descriptions | Public read, Admin write |
+| `product_variants` | Pack weights, prices, and stock inventory | Public read, Admin write |
+| `orders` | Customer orders, payment & delivery status, snapshots | Users view own orders, Admin full access |
+| `order_items` | Itemized order lines snapshot at purchase | Users view own items, Admin full access |
+| `addresses` | Saved customer addresses | Users view/edit own addresses |
+| `cart_items` | Customer cart items | Users view/edit own cart |
+| `auth_signup_otps` | Temporary encrypted signup requests & OTPs | Service role only |
+| `password_reset_tokens`| Single-use crypto password reset tokens | Service role only |
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Framework**: Next.js 15 (App Router, Server Actions, SSR)
+- **Framework**: Next.js (App Router, Server Actions, Turbopack)
 - **Language**: TypeScript
-- **Database & Auth**: Supabase (PostgreSQL, Row Level Security, Auth Cookies & JWT)
-- **Styling**: Tailwind CSS (Lucide Icons, responsive layouts)
-- **Payments**: Razorpay SDK + Cash on Delivery (COD)
-- **Media**: Cloudinary Upload Widget + Local WebP/JPEG Assets
-
----
-
-## 📁 Project Structure
-
-```text
-├── src/
-│   ├── actions/           # Next.js Server Actions (cart, checkout, shipping, admin...)
-│   ├── app/
-│   │   ├── (auth)/        # Login & OTP authentication pages
-│   │   ├── (storefront)/  # Home, Shop, Cart, Checkout, Account, About, Contact
-│   │   ├── admin/         # Admin Dashboard (Products, Orders, Customers, Settings)
-│   │   └── api/           # Webhooks and backend API routes
-│   ├── components/        # Reusable Storefront and Admin UI components
-│   ├── constants/         # Asset paths, brand typography & colors
-│   ├── contexts/          # React Contexts (CartContext, AdminNavContext)
-│   └── lib/               # Supabase browser, server, and admin clients
-├── supabase/              # SQL migrations and initial schema
-└── public/                # Static assets, branding logo, and spice photos
-```
+- **Database**: Supabase PostgreSQL with Row Level Security (RLS)
+- **Email Service**: Brevo API v3 (REST SMTP client with IPv4 prioritization)
+- **Payments**: Razorpay SDK + Webhooks + Cash on Delivery (COD)
+- **Styling**: Tailwind CSS & Lucide Icons
+- **Media**: Cloudinary Widget + Local Optimized Assets
 
 ---
 
