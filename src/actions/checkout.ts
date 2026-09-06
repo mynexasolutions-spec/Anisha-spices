@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 import { cookies } from 'next/headers'
 import Razorpay from 'razorpay'
 import crypto from 'crypto'
+import { sendOrderConfirmationEmail } from '@/lib/brevo'
 
 // Initialize Razorpay
 let razorpayInstance: any = null
@@ -327,6 +328,12 @@ export async function createOrder(
 
         const rzpOrder = await razorpayInstance.orders.create(options)
 
+        // Save razorpay_order_id immediately so webhook and callbacks can match it reliably
+        await adminClient
+          .from('orders')
+          .update({ razorpay_order_id: rzpOrder.id })
+          .eq('id', order.id)
+
         return {
           success: true,
           isRazorpay: true,
@@ -359,6 +366,39 @@ export async function createOrder(
       cookieStore.delete('guest_cart')
     } catch (e) {
       console.warn('Could not clear guest cart cookie:', e)
+    }
+
+    // 10. Send Brevo Confirmation Email for COD Order
+    const recipientEmail = shippingAddressSnapshot?.email || user?.email
+    if (recipientEmail) {
+      try {
+        await sendOrderConfirmationEmail({
+          orderNumber: order.order_number,
+          customerName: shippingAddressSnapshot?.full_name || 'Valued Customer',
+          customerEmail: recipientEmail,
+          customerPhone: shippingAddressSnapshot?.phone,
+          shippingAddress: shippingAddressSnapshot || {
+            address_line_1: '',
+            city: '',
+            state: '',
+            postal_code: '',
+          },
+          items: orderItemsToInsert.map(item => ({
+            product_name: item.product_name,
+            variant_name: item.variant_name,
+            quantity: item.quantity,
+            price_at_purchase: item.price_at_purchase,
+            line_total: item.line_total,
+          })),
+          subtotal,
+          shippingCost: shipping_cost,
+          totalAmount: total_amount,
+          paymentMethod: 'Cash on Delivery (COD)',
+          paymentStatus: 'pending',
+        })
+      } catch (emailErr) {
+        console.error('Failed to send COD confirmation email:', emailErr)
+      }
     }
 
     revalidatePath('/cart')
@@ -399,20 +439,81 @@ export async function verifyRazorpayPayment(
       return { success: false, error: 'Payment verification failed: Invalid signature' }
     }
 
-    // Update order status to paid
-    const { error: updateError } = await adminClient
+    // Check current order status
+    const { data: currentOrder } = await adminClient
       .from('orders')
-      .update({
-        payment_status: 'paid',
-        order_status: 'processing',
-        razorpay_payment_id,
-        razorpay_order_id,
-      })
+      .select('*')
       .eq('id', internal_order_id)
+      .single()
 
-    if (updateError) {
-      console.error('Failed to update order status:', updateError)
-      return { success: false, error: 'Failed to update order payment status' }
+    const wasAlreadyPaid = currentOrder?.payment_status === 'paid'
+
+    if (!wasAlreadyPaid) {
+      // Update order status to paid
+      const { error: updateError } = await adminClient
+        .from('orders')
+        .update({
+          payment_status: 'paid',
+          order_status: 'processing',
+          razorpay_payment_id,
+          razorpay_order_id,
+        })
+        .eq('id', internal_order_id)
+
+      if (updateError) {
+        console.error('Failed to update order status:', updateError)
+        return { success: false, error: 'Failed to update order payment status' }
+      }
+
+      // Send Brevo Confirmation Email if not already sent by webhook
+      if (currentOrder) {
+        const { data: orderItems } = await adminClient
+          .from('order_items')
+          .select('*')
+          .eq('order_id', internal_order_id)
+
+        let customerEmail = currentOrder.shipping_address?.email
+        let customerName = currentOrder.shipping_address?.full_name || 'Valued Customer'
+
+        if (!customerEmail && currentOrder.user_id) {
+          const { data: authUser } = await adminClient.auth.admin.getUserById(currentOrder.user_id)
+          if (authUser?.user?.email) {
+            customerEmail = authUser.user.email
+            customerName = authUser.user.user_metadata?.full_name || customerName
+          }
+        }
+
+        if (customerEmail) {
+          try {
+            await sendOrderConfirmationEmail({
+              orderNumber: currentOrder.order_number,
+              customerName,
+              customerEmail,
+              customerPhone: currentOrder.shipping_address?.phone,
+              shippingAddress: currentOrder.shipping_address || {
+                address_line_1: '',
+                city: '',
+                state: '',
+                postal_code: '',
+              },
+              items: (orderItems || []).map((item: any) => ({
+                product_name: item.product_name,
+                variant_name: item.variant_name,
+                quantity: item.quantity,
+                price_at_purchase: item.price_at_purchase,
+                line_total: item.line_total,
+              })),
+              subtotal: Number(currentOrder.subtotal),
+              shippingCost: Number(currentOrder.shipping_cost),
+              totalAmount: Number(currentOrder.total_amount),
+              paymentMethod: 'Online Payment (Razorpay)',
+              paymentStatus: 'paid',
+            })
+          } catch (emailErr) {
+            console.error('Failed to send verified payment confirmation email:', emailErr)
+          }
+        }
+      }
     }
 
     // Clear user and guest cart

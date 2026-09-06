@@ -289,3 +289,243 @@ export async function sendPasswordResetEmail({
     htmlContent,
   })
 }
+
+/**
+ * 3. Send Order Confirmation / Invoice Receipt Email
+ */
+export type OrderItemSummary = {
+  product_name: string
+  variant_name?: string | null
+  quantity: number
+  price_at_purchase: number
+  line_total: number
+}
+
+export type OrderEmailData = {
+  orderNumber: string
+  customerName: string
+  customerEmail: string
+  customerPhone?: string
+  shippingAddress: {
+    address_line_1: string
+    address_line_2?: string | null
+    city: string
+    state: string
+    postal_code: string
+    country?: string
+  }
+  items: OrderItemSummary[]
+  subtotal: number
+  shippingCost: number
+  totalAmount: number
+  paymentMethod: string
+  paymentStatus: 'paid' | 'pending'
+  orderDate?: string
+}
+
+export async function sendOrderConfirmationEmail(data: OrderEmailData) {
+  const isPaidOnline = data.paymentStatus === 'paid'
+  const subject = `Order Confirmed: #${data.orderNumber} - Anisha Masale`
+  const formattedDate = data.orderDate || new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+
+  // Format shipping address block
+  const fullAddress = [
+    data.shippingAddress.address_line_1,
+    data.shippingAddress.address_line_2,
+    `${data.shippingAddress.city}, ${data.shippingAddress.state} - ${data.shippingAddress.postal_code}`,
+    data.shippingAddress.country || 'India',
+  ].filter(Boolean).join('<br>')
+
+  // Generate table rows for items
+  const itemRowsHtml = data.items.map(item => `
+    <tr style="border-bottom: 1px solid #F0E8DF;">
+      <td style="padding: 14px 10px; font-size: 13px; color: #2A1612; vertical-align: top;">
+        <strong style="color: #2A1612;">${item.product_name}</strong>
+        ${item.variant_name ? `<br><span style="font-size: 11px; color: #8C7567;">Weight / Pack: ${item.variant_name}</span>` : ''}
+      </td>
+      <td style="padding: 14px 10px; font-size: 13px; color: #6E5951; text-align: center; vertical-align: top;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 14px 10px; font-size: 13px; color: #6E5951; text-align: right; vertical-align: top;">
+        ₹${Number(item.price_at_purchase).toLocaleString('en-IN')}
+      </td>
+      <td style="padding: 14px 10px; font-size: 13px; font-weight: 700; color: #7B111A; text-align: right; vertical-align: top;">
+        ₹${Number(item.line_total).toLocaleString('en-IN')}
+      </td>
+    </tr>
+  `).join('')
+
+  const paymentBadgeText = isPaidOnline ? 'PAID ONLINE (RAZORPAY)' : 'CASH ON DELIVERY (COD)'
+  const paymentBadgeBg = isPaidOnline ? '#EAF5EA' : '#FFF5EB'
+  const paymentBadgeColor = isPaidOnline ? '#166534' : '#9A3412'
+  const paymentBadgeBorder = isPaidOnline ? '#BBF7D0' : '#FED7AA'
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #FAF6F2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2A1612;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAF6F2; padding: 35px 12px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(123, 17, 26, 0.08); border: 1px solid #E8DFD5;">
+          
+          <!-- Brand Header Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #7B111A 0%, #4D0910 100%); padding: 30px 24px; text-align: center;">
+              <div style="font-size: 26px; font-weight: 800; color: #FFFFFF; letter-spacing: 2.5px; text-transform: uppercase;">
+                ANISHA MASALE
+              </div>
+              <div style="font-size: 11px; color: #D4AF37; letter-spacing: 3px; margin-top: 4px; text-transform: uppercase; font-weight: 600;">
+                Pure Spices · Royal Heritage
+              </div>
+            </td>
+          </tr>
+
+          <!-- Success Greeting -->
+          <tr>
+            <td style="padding: 32px 28px 10px 28px; text-align: center;">
+              <div style="display: inline-block; background-color: #EAF5EA; border: 1px solid #BBF7D0; color: #166534; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 14px; border-radius: 50px; margin-bottom: 12px;">
+                ✓ Order Confirmed
+              </div>
+              <h2 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 800; color: #2A1612;">
+                Thank You for Your Order!
+              </h2>
+              <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #6E5951;">
+                Namaste <strong>${data.customerName || 'Valued Customer'}</strong>, your authentic Indian spice order has been received and is being prepared with utmost care.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Order Summary Meta Box -->
+          <tr>
+            <td style="padding: 16px 28px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAF6F2; border-radius: 12px; border: 1px solid #E8DFD5; padding: 14px 18px;">
+                <tr>
+                  <td style="font-size: 12px; color: #8C7567; padding: 4px 0;">
+                    Order Number: <strong style="color: #7B111A; font-family: monospace; font-size: 13px;">#${data.orderNumber}</strong>
+                  </td>
+                  <td align="right" style="font-size: 12px; color: #8C7567; padding: 4px 0;">
+                    Date: <strong style="color: #2A1612;">${formattedDate}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="font-size: 12px; color: #8C7567; padding-top: 6px;">
+                    Payment: <span style="display: inline-block; background-color: ${paymentBadgeBg}; color: ${paymentBadgeColor}; border: 1px solid ${paymentBadgeBorder}; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px;">${paymentBadgeText}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Itemized Table -->
+          <tr>
+            <td style="padding: 10px 28px 16px 28px;">
+              <div style="font-size: 14px; font-weight: 700; color: #2A1612; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+                Order Summary
+              </div>
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                <thead>
+                  <tr style="background-color: #F8F4EE; border-bottom: 2px solid #E8DFD5;">
+                    <th align="left" style="padding: 10px; font-size: 11px; font-weight: 700; color: #6E5951; text-transform: uppercase; letter-spacing: 1px;">Item</th>
+                    <th align="center" style="padding: 10px; font-size: 11px; font-weight: 700; color: #6E5951; text-transform: uppercase; letter-spacing: 1px;">Qty</th>
+                    <th align="right" style="padding: 10px; font-size: 11px; font-weight: 700; color: #6E5951; text-transform: uppercase; letter-spacing: 1px;">Price</th>
+                    <th align="right" style="padding: 10px; font-size: 11px; font-weight: 700; color: #6E5951; text-transform: uppercase; letter-spacing: 1px;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemRowsHtml}
+                </tbody>
+              </table>
+
+              <!-- Totals Calculation -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 14px; border-top: 1px solid #E8DFD5; padding-top: 12px;">
+                <tr>
+                  <td align="right" style="font-size: 13px; color: #6E5951; padding: 4px 10px;">Subtotal:</td>
+                  <td align="right" width="90" style="font-size: 13px; color: #2A1612; padding: 4px 10px;">₹${Number(data.subtotal).toLocaleString('en-IN')}</td>
+                </tr>
+                <tr>
+                  <td align="right" style="font-size: 13px; color: #6E5951; padding: 4px 10px;">Shipping:</td>
+                  <td align="right" width="90" style="font-size: 13px; font-weight: 600; color: ${data.shippingCost === 0 ? '#166534' : '#2A1612'}; padding: 4px 10px;">
+                    ${data.shippingCost === 0 ? 'FREE' : `₹${Number(data.shippingCost).toLocaleString('en-IN')}`}
+                  </td>
+                </tr>
+                <tr style="border-top: 2px solid #7B111A;">
+                  <td align="right" style="font-size: 15px; font-weight: 800; color: #7B111A; padding: 10px 10px 4px 10px;">Total Amount:</td>
+                  <td align="right" width="90" style="font-size: 17px; font-weight: 800; color: #7B111A; padding: 10px 10px 4px 10px;">₹${Number(data.totalAmount).toLocaleString('en-IN')}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Delivery Address Box -->
+          <tr>
+            <td style="padding: 6px 28px 20px 28px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAF6F2; border-radius: 12px; border: 1px solid #E8DFD5; padding: 16px;">
+                <tr>
+                  <td style="font-size: 12px; font-weight: 700; color: #7B111A; text-transform: uppercase; letter-spacing: 1px; padding-bottom: 8px;">
+                    📍 Delivery Address
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 13px; line-height: 1.6; color: #2A1612;">
+                    <strong>${data.shippingAddress.address_line_1 ? data.customerName : ''}</strong><br>
+                    ${fullAddress}
+                    ${data.customerPhone ? `<br><span style="color: #6E5951; font-size: 12px;">📞 Phone: ${data.customerPhone}</span>` : ''}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Dispatch Assurance Box -->
+          <tr>
+            <td style="padding: 0 28px 24px 28px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFF9F2; border-left: 4px solid #C89B65; border-radius: 6px; padding: 12px 16px;">
+                <tr>
+                  <td style="font-size: 12px; line-height: 1.5; color: #6E5951;">
+                    🌿 <strong>Artisanal Assurance:</strong> All Anisha Masale batches are freshly ground from handpicked whole spices, zero preservatives, and sealed in airtight aroma-lock packaging. Your package will be dispatched within 24–48 hours.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #FAF6F2; border-top: 1px solid #E8DFD5; padding: 24px 28px; text-align: center;">
+              <div style="font-size: 12px; font-weight: 600; color: #6E5951;">
+                Anisha Masale · Handcrafted Indian Spices
+              </div>
+              <div style="font-size: 11px; color: #8C7567; margin-top: 4px;">
+                Questions about your order? Reach us at <a href="mailto:info@meagle360.com" style="color: #7B111A; text-decoration: underline;">info@meagle360.com</a>
+              </div>
+              <div style="font-size: 10px; color: #A68B7C; margin-top: 8px;">
+                © ${new Date().getFullYear()} Anisha Masale. All rights reserved.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+
+  return sendBrevoEmail({
+    toEmail: data.customerEmail,
+    toName: data.customerName,
+    subject,
+    htmlContent,
+  })
+}
+
